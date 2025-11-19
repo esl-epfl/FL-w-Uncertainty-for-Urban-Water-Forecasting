@@ -1,4 +1,4 @@
-from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_Custom_add_sin, Dataset_Custom_exo
+from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_Custom_add_sin, Dataset_Custom_exo, Dataset_Custom_real_forecast
 # from data_provider.data_loader_multi_resolution import Dataset_Custom, Dataset_Pred
 from torch.utils.data import DataLoader
 
@@ -10,6 +10,7 @@ data_dict = {
     'custom': Dataset_Custom,
     'custom_sin': Dataset_Custom_add_sin,
     'custom_exo': Dataset_Custom_exo,
+    'custom_real': Dataset_Custom_real_forecast,
 }
 
 
