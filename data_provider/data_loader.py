@@ -455,6 +455,7 @@ class Dataset_Custom_real_forecast(Dataset):
             df_raw_exo_msr['time'] = pd.to_datetime(df_raw_exo_msr['time'])
             df_raw_exo_msr = df_raw_exo_msr.rename(columns={'time': 'date', 'value': 'exo_measured'})
             df_raw_endo = df_raw_endo.merge(df_raw_exo_msr, on='date', how='left')
+            df_raw_endo['exo_measured'] = df_raw_endo['exo_measured'].fillna(0.0)
         else:
             df_raw_endo['exo_measured'] = np.nan
 

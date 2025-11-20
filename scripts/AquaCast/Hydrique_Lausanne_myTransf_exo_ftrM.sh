@@ -13,16 +13,17 @@ do
     if [ ! -d "./logs/Hydrique_Lausanne_"$data_version"/"$target_node ]; then
         mkdir ./logs/Hydrique_Lausanne_"$data_version"/$target_node
     fi
-    seq_len=96
+    seq_len=144
     model_name=AquaCast
 
     root_path_name=/home/abgo/Data/Hydrique_Lausanne/code/
     endo_path=Hydrique_WWTP_total.csv                       # e.g. 'ETTh1.csv' but with [date, Node1, Node2, ...]
     exo_measured_path=measure_timeseries_dt_measure.csv      # columns: [time, value]
     exo_forecast_path=measure_timeseries_dt_forecast.csv      # columns: [issued_at, forecast_time, value]
+    model_id_name="AquaCast_real"
     data_name=custom_real
 
-    features=M
+    features=MS
     enc_in=2
 
     # pred_len=96
@@ -33,7 +34,7 @@ do
     n_heads=2
     d_model=32
     d_ff=128
-    for pred_len in 96 #192 480 720
+    for pred_len in 72 #192 480 720
     do
         python -u run_longExp.py \
         --random_seed $random_seed \
