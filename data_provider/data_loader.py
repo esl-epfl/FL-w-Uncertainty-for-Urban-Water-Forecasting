@@ -222,7 +222,7 @@ class Dataset_Custom(Dataset):
         self.scaler = StandardScaler()
         self.normal = MinMaxScaler()
         df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.data_path))
+                                          self.data_path[0]))
 
         '''
         df_raw.columns: ['date', ...(other features), target feature]
@@ -322,7 +322,7 @@ class Dataset_Custom_exo(Dataset):
     def __read_data__(self):
         self.scaler = StandardScaler()
         self.normal = MinMaxScaler()
-        df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
+        df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path[0]))
 
         # Move the last column (exo_future) to the end if needed
         cols = list(df_raw.columns)
@@ -407,7 +407,7 @@ class Dataset_Custom_real_forecast(Dataset):
                     over the prediction horizon
         """
         # test
-        exo_measured_path = "measure_timeseries_dt_measure.csv"      
+        # exo_measured_path = "measure_timeseries_dt_measure.csv"      
         exo_forecast_path = "measure_timeseries_dt_forecast.csv"     
 
         # size = [seq_len, label_len, pred_len]
@@ -429,9 +429,10 @@ class Dataset_Custom_real_forecast(Dataset):
         self.freq = freq
 
         self.root_path = root_path
-        self.endo_path = data_path
-        self.exo_measured_path = exo_measured_path
-        self.exo_forecast_path = exo_forecast_path
+        self.endo_path = data_path[0]
+        # self.exo_measured_path = exo_measured_path
+        self.exo_forecast_path = data_path[1]
+        # self.root_forecast = "/home/abgo/Data/Hydrique_Lausanne/code/"
 
         self.__read_data__()
 
@@ -450,14 +451,14 @@ class Dataset_Custom_real_forecast(Dataset):
         # --------------------------------------------------
         # 2) Load measured exogenous (df_m: time, value) and merge
         # --------------------------------------------------
-        if self.exo_measured_path:
-            df_raw_exo_msr = pd.read_csv(os.path.join(self.root_path, self.exo_measured_path))
-            df_raw_exo_msr['time'] = pd.to_datetime(df_raw_exo_msr['time'])
-            df_raw_exo_msr = df_raw_exo_msr.rename(columns={'time': 'date', 'value': 'exo_measured'})
-            df_raw_endo = df_raw_endo.merge(df_raw_exo_msr, on='date', how='left')
-            df_raw_endo['exo_measured'] = df_raw_endo['exo_measured'].fillna(0.0)
-        else:
-            df_raw_endo['exo_measured'] = np.nan
+        # if self.exo_measured_path:
+        #     df_raw_exo_msr = pd.read_csv(os.path.join(self.root_path, self.exo_measured_path))
+        #     df_raw_exo_msr['time'] = pd.to_datetime(df_raw_exo_msr['time'])
+        #     df_raw_exo_msr = df_raw_exo_msr.rename(columns={'time': 'date', 'value': 'exo_measured'})
+        #     df_raw_endo = df_raw_endo.merge(df_raw_exo_msr, on='date', how='left')
+        #     df_raw_endo['exo_measured'] = df_raw_endo['exo_measured'].fillna(0.0)
+        # else:
+        #     df_raw_endo['exo_measured'] = np.nan
 
         # --------------------------------------------------
         # 3) Load forecast exogenous (df_f: issued_at, forecast_time, value)
@@ -565,15 +566,17 @@ class Dataset_Custom_real_forecast(Dataset):
         # --------------------------------------------------
         self.data_x = data[border1:border2]  # full feature set for encoder
 
-        df_data_cols = list(df_data.columns)
+        # df_data_cols = list(df_data.columns)
         # endogenous = all df_data columns except explicit exogenous ones
-        exo_cols = ['exo_measured']  # extend here if you add more exogenous columns later
-        endo_cols = [c for c in df_data_cols if c not in exo_cols]
+        # exo_cols = ['exo_measured']  # extend here if you add more exogenous columns later
+        # endo_cols = [c for c in df_data_cols if c not in exo_cols]
 
-        endo_idx = [df_data_cols.index(c) for c in endo_cols]
-        data_endo = data[:, endo_idx]
+        # endo_idx = [df_data_cols.index(c) for c in endo_cols]
+        # data_endo = data[:, endo_idx]
 
-        self.data_y = data_endo[border1:border2]  # only endogenous series
+        # self.data_y = data_endo[border1:border2]  # only endogenous series
+        self.data_y = data[border1:border2]
+
         self.data_stamp = data_stamp
 
     def __getitem__(self, index):
