@@ -42,7 +42,8 @@ class Model(nn.Module):
             # )
             
             #option2: Linear layer
-            self.exo_embedder = nn.Linear(configs.pred_len, d_model)  # [B, Exo_len, 1] -> [B, 1, d_model]
+            # self.exo_embedder = nn.Linear(configs.pred_len, d_model)  # [B, Exo_len, 1] -> [B, 1, d_model]
+            self.exo_embedder = nn.Linear(36, d_model)  # [B, Exo_len, 1] -> [B, 1, d_model]
             
             # #option3: Conv1D + linear
             # conv_exo_out_len = self.calculate_output_length_conv1d(target_window, kernel_size, stride)
