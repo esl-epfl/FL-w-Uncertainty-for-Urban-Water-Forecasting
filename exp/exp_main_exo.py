@@ -406,6 +406,11 @@ class Exp_Main_exo(Exp_Basic):
     def test_all(self, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
         mean, var = test_data.scaler.mean_, test_data.scaler.scale_
+        # check if test_data has exo_forecast_scaler
+        try:
+            mean_exo, var_exo = test_data.exo_forecast_scaler.mean_, test_data.exo_forecast_scaler.scale_
+        except AttributeError:
+            mean_exo, var_exo = None, None
         min_, max_ = test_data.normal.data_min_, test_data.normal.data_max_
         inverse_transform = True
         print(self.args.exo_future, self.args.exo)
@@ -550,7 +555,11 @@ class Exp_Main_exo(Exp_Basic):
                             gt = gt * var[-1] + mean[-1]
                             pd = pd * var[-1] + mean[-1]
                             if rn is not None:
-                                rn = rn * var[rain_index] + mean[rain_index]
+                                if mean_exo is not None and var_exo is not None:
+                                    rn[:len(rain[b, :])] = rn[:len(rain[b, :])] * var[rain_index] + mean[rain_index]
+                                    rn[len(rain[b, :]):] = rn[len(rain[b, :]):] * var_exo[-1] + mean_exo[-1]
+                                else:
+                                     rn = rn * var[rain_index] + mean[rain_index]
 
                         path = os.path.join(folder_path, f'plot_{s}_{DTW_error_per_signal[b,s].item():.5f}_{i}_{b}.pdf') # {i}_{b}_{s}: batch number, batch element, signal
                         # visual(gt, pd, path) 
