@@ -382,7 +382,16 @@ class Dataset_Custom_exo(Dataset):
 
         # Exogenous future: last column of data_x, future window after s_end
         exo_future = self.data_x[s_end:s_end + self.pred_len, -2]  # shape: [pred_len], index -2 if the exogenous (rain) is the last column in raw file
-        exo_future = exo_future.reshape(self.pred_len, 1)          # shape: [pred_len, 1]
+        
+        if len(exo_future) >= 36:
+            exo_future = exo_future[:36]
+        elif len(exo_future) == 0:
+            exo_future = np.zeros(36, dtype=np.float32)
+        else:
+            pad = np.full(36 - len(exo_future), exo_future[-1], dtype=np.float32)
+            exo_future = np.concatenate([exo_future, pad], axis=0)
+
+        exo_future = exo_future.reshape(36, 1)          # shape: [pred_len, 1]
 
         return [seq_x, exo_future], seq_y, seq_x_mark, seq_y_mark
 
@@ -460,34 +469,6 @@ class Dataset_Custom_real_forecast(Dataset):
         # else:
         #     df_raw_endo['exo_measured'] = np.nan
 
-        # --------------------------------------------------
-        # 3) Load forecast exogenous (df_f: issued_at, forecast_time, value)
-        #    KEEP ALL FORECASTS; group by issued_at for fast lookup
-        # --------------------------------------------------
-        self.forecast_by_issue = {}
-        if self.exo_forecast_path:
-            df_raw_exo_frc = pd.read_csv(os.path.join(self.root_path, self.exo_forecast_path))
-            df_raw_exo_frc['issued_at'] = pd.to_datetime(df_raw_exo_frc['issued_at'])
-            df_raw_exo_frc['forecast_time'] = pd.to_datetime(df_raw_exo_frc['forecast_time'])
-
-            # optional: avoid forecasts issued after their valid time
-            df_raw_exo_frc = df_raw_exo_frc[
-                df_raw_exo_frc['issued_at'] <= df_raw_exo_frc['forecast_time']
-            ]
-
-            # scale forecast values (so exo_future is on similar scale as seq_x)
-            if self.scale:
-                self.exo_forecast_scaler.fit(df_raw_exo_frc[['value']].values)
-                df_raw_exo_frc['value_scaled'] = self.exo_forecast_scaler.transform(
-                    df_raw_exo_frc[['value']].values
-                )
-            else:
-                df_raw_exo_frc['value_scaled'] = df_raw_exo_frc['value'].astype(float)
-
-            # group by issued_at, keep each group sorted in forecast_time
-            for issued_at, g in df_raw_exo_frc.groupby('issued_at'):
-                g = g.sort_values('forecast_time').reset_index(drop=True)
-                self.forecast_by_issue[issued_at] = g
 
         # --------------------------------------------------
         # 4) Reorder columns: date, features..., target last
@@ -579,6 +560,36 @@ class Dataset_Custom_real_forecast(Dataset):
 
         self.data_stamp = data_stamp
 
+        # --------------------------------------------------
+        # 3) Load forecast exogenous (df_f: issued_at, forecast_time, value)
+        #    KEEP ALL FORECASTS; group by issued_at for fast lookup
+        # --------------------------------------------------
+        self.forecast_by_issue = {}
+        if self.exo_forecast_path:
+            df_raw_exo_frc = pd.read_csv(os.path.join(self.root_path, self.exo_forecast_path))
+            df_raw_exo_frc['issued_at'] = pd.to_datetime(df_raw_exo_frc['issued_at'])
+            df_raw_exo_frc['forecast_time'] = pd.to_datetime(df_raw_exo_frc['forecast_time'])
+
+            # optional: avoid forecasts issued after their valid time
+            df_raw_exo_frc = df_raw_exo_frc[
+                df_raw_exo_frc['issued_at'] <= df_raw_exo_frc['forecast_time']
+            ]
+
+            # scale forecast values (so exo_future is on similar scale as seq_x)
+            if self.scale:
+                self.exo_forecast_scaler.fit(df_raw_exo_frc[border1s[0]:border2s[0]][['value']].values)
+                df_raw_exo_frc['value_scaled'] = self.exo_forecast_scaler.transform(
+                    df_raw_exo_frc[['value']].values
+                )
+            else:
+                df_raw_exo_frc['value_scaled'] = df_raw_exo_frc['value'].astype(float)
+
+            # group by issued_at, keep each group sorted in forecast_time
+            for issued_at, g in df_raw_exo_frc.groupby('issued_at'):
+                g = g.sort_values('forecast_time').reset_index(drop=True)
+                self.forecast_by_issue[issued_at] = g
+
+
     def __getitem__(self, index):
 
         s_begin = index
@@ -601,22 +612,23 @@ class Dataset_Custom_real_forecast(Dataset):
         
         df_issue = self.forecast_by_issue.get(end_time, None)
 
+        # self.pred_len or fixed 36 steps?
         if df_issue is None:
-            vals = np.zeros(self.pred_len, dtype=np.float32)
+            vals = np.zeros(36, dtype=np.float32)
         else:
             # forecast_time >= end_time
             df_horizon = df_issue[df_issue['forecast_time'] >= end_time]
             raw_vals = df_horizon['value_scaled'].to_numpy(dtype=np.float32)
 
-            if len(raw_vals) >= self.pred_len:
-                vals = raw_vals[:self.pred_len]
+            if len(raw_vals) >= 36:
+                vals = raw_vals[:36]
             elif len(raw_vals) == 0:
-                vals = np.zeros(self.pred_len, dtype=np.float32)
+                vals = np.zeros(36, dtype=np.float32)
             else:
-                pad = np.full(self.pred_len - len(raw_vals), raw_vals[-1], dtype=np.float32)
+                pad = np.full(36 - len(raw_vals), raw_vals[-1], dtype=np.float32)
                 vals = np.concatenate([raw_vals, pad], axis=0)
         
-        exo_future = vals.reshape(self.pred_len, 1)
+        exo_future = vals.reshape(36, 1)
 
         # --------------------------------------------------
         # FINAL RETURN (ALL TORCH TENSORS)
