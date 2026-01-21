@@ -3,6 +3,9 @@ __all__ = ['AquaCast']
 import torch
 import torch.nn as nn
 
+from layers.Quantile_head import QuantileHead
+
+
 class Model(nn.Module):
     def __init__(self, configs):
         super().__init__()
@@ -22,6 +25,10 @@ class Model(nn.Module):
         self.use_exo_future = configs.exo_future
         self.n_pred_var = configs.enc_in - (configs.exo)
 
+        # Choose your quantiles (example default)
+        # For Chronos-2-like setup you can pass a 21-quantile grid in configs.quantiles.
+        self.quantiles = getattr(configs, "quantiles", [0.1, 0.5, 0.9])
+
         # CNN embeddings for main input
         self.embedding1 = nn.Conv1d(in_channels=nvars, out_channels=d_model // 4,
                                     kernel_size=kernel_size, stride=stride, bias=True)
@@ -35,23 +42,8 @@ class Model(nn.Module):
 
         # Optional embedding for exogenous future time series
         if self.use_exo_future:
-            # #option1: CNN1D + AvgPool1D
-            # self.exo_embedder = nn.Sequential(
-            #     # nn.Conv1d(1, d_model, kernel_size=kernel_size, padding=1),
-            #     # nn.AdaptiveAvgPool1d(1)
-            # )
-            
-            #option2: Linear layer
-            # self.exo_embedder = nn.Linear(configs.pred_len, d_model)  # [B, Exo_len, 1] -> [B, 1, d_model]
             self.exo_embedder = nn.Linear(36, d_model)  # [B, Exo_len, 1] -> [B, 1, d_model]
-            
-            # #option3: Conv1D + linear
-            # conv_exo_out_len = self.calculate_output_length_conv1d(target_window, kernel_size, stride)
-            # self.exo_embedder = nn.Sequential(
-            #     nn.Conv1d(1, d_model, kernel_size=kernel_size, stride=stride, bias=True),
-            #     nn.Flatten(start_dim=-2),
-            #     nn.Linear(d_model * conv_exo_out_len, d_model)
-            # ) # [B, Exo_len, 1] -> [B, d_model]
+
 
         # Transformer Encoder
         self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads,
@@ -61,7 +53,17 @@ class Model(nn.Module):
 
         self.flatten = nn.Flatten(start_dim=-2)
         total_len = conv_out_len + (1 if self.use_exo_future else 0)
-        self.decoder = nn.Linear(d_model * total_len, target_window * self.n_pred_var)
+        
+        # Quantile head (Chronos-2 style residual head), replaced point decoder
+        in_dim = d_model * total_len
+        self.quantile_head = QuantileHead(
+            in_dim=in_dim,
+            pred_len=target_window,
+            n_pred_var=self.n_pred_var,
+            quantiles=self.quantiles,
+            dropout=dropout,
+            head_hidden=getattr(configs, "q_head_hidden", 512),
+        )
 
     def calculate_output_length_conv1d(self, length_in, kernel_size, stride=1, padding=0, dilation=1):
         return (length_in + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
@@ -81,16 +83,15 @@ class Model(nn.Module):
         # Optional embedding of exo forecast (exo_future)
         if self.use_exo_future:
             exo_token = self.exo_embedder(exo_future.permute(0, 2, 1))#.unsqueeze(1)  # new: [B, 1, Exo_len]
-            # exo_token = exo_token.squeeze(-1).unsqueeze(1)          # [B, 1, d_model]
             x = torch.cat([exo_token, x], dim=1) 
 
-        # Transformer and decoding
-        x = self.transformer_encoder(x)           # [B, total_len, d_model]
-        x = self.flatten(x)                       # [B, total_len * d_model]
-        x = self.decoder(x)                       # [B, target_window * n_pred_var]
-        x = x.view(batch_size, -1, self.n_pred_var)  # [B, target_window, n_pred_var]
+        # Transformer
+        x = self.transformer_encoder(x)      # [B, total_len, d_model]
+        features = self.flatten(x)           # [B, total_len*d_model]
 
-        return x
+        # Quantile forecast
+        q = self.quantile_head(features)     # [B, pred_len, n_pred_var, n_q]
+        return q
 
 if __name__ == "__main__":
     # --- Mock Config Object ---

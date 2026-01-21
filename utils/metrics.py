@@ -50,9 +50,57 @@ def MSPE(pred, true):
 def explained_variance_score(pred, true): #explained_variance_score
     return 1 - (np.var(true - pred, ddof=1) / np.var(true, ddof=1))
 
+def pinball_loss(pred, true, q):
+    """
+    pred: [B, T, V] predictions for one quantile
+    true: [B, T, V]
+    q: scalar in (0,1)
+    """
+    e = true - pred
+    return np.maximum(q * e, (q - 1.0) * e)  # same as q*relu(e) + (1-q)*relu(-e)
 
+def WQL(pred_q, true, quantiles):
+    """
+    Weighted Quantile Loss (mean over quantiles, then mean over B,T,V)
+    pred_q: [B, T, V, Q]
+    true:   [B, T, V]
+    """
+    qs = np.asarray(quantiles, dtype=np.float64)
+    assert pred_q.shape[-1] == len(qs)
 
-def metric(pred, true):
+    losses = []
+    for i, q in enumerate(qs):
+        losses.append(pinball_loss(pred_q[..., i], true, q))  # [B,T,V]
+    losses = np.stack(losses, axis=-1)  # [B,T,V,Q]
+
+    # average over quantiles then over B,T,V
+    return losses.mean(axis=-1).mean()
+
+def SQL(pred_q, true, quantiles, eps=1e-8):
+    """
+    Scaled Quantile Loss:
+      SQL = WQL / mean(|true|)
+    averaged over all forecast steps and batch items (and variables).
+    """
+    wql = WQL(pred_q, true, quantiles)
+    scale = np.mean(np.abs(true)) + eps
+    return wql / scale
+
+def quantile_to_point(pred_q, quantiles, q_point=0.5):
+    qs = np.asarray(quantiles)
+    idx = int(np.argmin(np.abs(qs - q_point)))
+    return pred_q[..., idx]  # [B,T,V]
+
+def metric(pred, true, quantiles=None):
+
+    sql = None
+    sql_point = None
+    if quantiles is not None:
+        sql = SQL(pred, true, quantiles)
+        pred_q = quantile_to_point(pred, quantiles, q_point=0.5)
+        sql_point = SQL(pred_q[..., np.newaxis], true, [0.5])
+        pred = pred_q # use point forecast for other metrics to follow previous convention
+
     mae = MAE(pred, true)
     mse = MSE(pred, true)
     rmse = RMSE(pred, true)
@@ -68,4 +116,4 @@ def metric(pred, true):
     rmse_individual = RMSE_individual(pred, true)
     r2_individual = R2_individual(pred, true)
 
-    return mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual
+    return mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point

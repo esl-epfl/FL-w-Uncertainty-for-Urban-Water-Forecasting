@@ -3,6 +3,8 @@ from exp.exp_basic import Exp_Basic
 from models import PatchTST, AquaCast
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop, visual_plot, visual_rain, visual_acc
 from utils.metrics import metric
+from pytorch_forecasting.metrics import QuantileLoss
+
 
 import numpy as np
 import torch
@@ -46,9 +48,87 @@ class Exp_Main_exo(Exp_Basic):
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
+    
+    import torch
+
+    def quantile_loss(
+        z: torch.Tensor,
+        z_hat: torch.Tensor,
+        quantiles
+    ) -> torch.Tensor:
+        """
+        Quantile (pinball) loss:
+        - summed over quantiles
+        - averaged over batch, forecast steps, variables
+
+        Args:
+            z:      target values, shape [B, T, V]
+            z_hat:  quantile predictions, shape [B, T, V, Q]
+            quantiles: list or 1D tensor of quantile levels (length Q)
+
+        Returns:
+            scalar loss
+        """
+        if not torch.is_tensor(quantiles):
+            quantiles = torch.tensor(
+                quantiles, device=z_hat.device, dtype=z_hat.dtype
+            )
+        else:
+            quantiles = quantiles.to(device=z_hat.device, dtype=z_hat.dtype)
+
+        # reshape for broadcasting: [1, 1, 1, Q]
+        q = quantiles.view(1, 1, 1, -1)
+
+        # expand target: [B, T, V, 1]
+        z = z.unsqueeze(-1)
+
+        # pinball loss components
+        under = torch.relu(z - z_hat)
+        over  = torch.relu(z_hat - z)
+
+        # sum over quantiles
+        loss = q * under + (1.0 - q) * over     # [B, T, V, Q]
+        loss = loss.sum(dim=-1)                 # [B, T, V]
+
+        # average over batch, time, variables
+        return loss.mean()
 
     def _select_criterion(self):
-        criterion = nn.MSELoss()
+        """
+        Returns a callable `criterion(outputs, batch_y) -> scalar loss`
+        using PyTorch-Forecasting QuantileLoss.
+
+        Expected:
+          outputs: [B, T, V, Q]
+          batch_y: [B, T, V]
+        """
+        self.quantiles = getattr(self.args, "quantiles", [0.1, 0.5, 0.9])  # or wherever configs live
+        qloss = QuantileLoss(quantiles=self.quantiles)
+
+        def criterion(outputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+            # outputs: [B, T, V, Q], target: [B, T, V]
+            if outputs.ndim != 4:
+                raise ValueError(f"Expected outputs [B,T,V,Q], got {tuple(outputs.shape)}")
+            if target.ndim != 3:
+                raise ValueError(f"Expected target  [B,T,V], got {tuple(target.shape)}")
+
+            B, T, V = target.shape
+            Q = outputs.shape[-1]
+            if outputs.shape[:3] != (B, T, V):
+                raise ValueError(
+                    f"Shape mismatch: outputs {tuple(outputs.shape)} vs target {tuple(target.shape)}"
+                )
+
+            # Treat each variable as an extra batch item so averaging matches your spec
+            # outputs: (B, T, V, Q) -> (B*V, T, Q)
+            y_hat = outputs.permute(0, 2, 1, 3).reshape(B * V, T, Q)
+            # target : (B, T, V) -> (B*V, T)
+            y = target.permute(0, 2, 1).reshape(B * V, T)
+
+            # QuantileLoss.loss returns unreduced loss; we average over everything
+            loss_unreduced = qloss.loss(y_hat, y)
+            return loss_unreduced.mean()
+
         return criterion
     
     def compute_dtw(self, outputs, batch_y):
@@ -112,7 +192,7 @@ class Exp_Main_exo(Exp_Basic):
                     print('model is not implemented')
                     break
                 f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                outputs = outputs[:, -self.args.pred_len:, f_dim:, :]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                 
                 # remove index -2 and -3 if args.exo_future and args.exo are True, but keep the index -1
@@ -124,7 +204,7 @@ class Exp_Main_exo(Exp_Basic):
                         batch_y = torch.cat((batch_y, target), axis=-1)
                     else:
                         pass
-                    assert batch_y.shape[-1] == outputs.shape[-1], f"batch_y shape: {batch_y.shape}, outputs shape: {outputs.shape}, shapes do not match"
+                    assert batch_y.shape[-1] == outputs.shape[-2], f"batch_y shape: {batch_y.shape}, outputs shape: {outputs.shape}, shapes do not match"
 
 
                 pred = outputs.detach().cpu()
@@ -204,7 +284,7 @@ class Exp_Main_exo(Exp_Basic):
                     break
                 
                 f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                outputs = outputs[:, -self.args.pred_len:, f_dim:, :]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                 
                 # remove index -2 and -3 if args.exo_future and args.exo are True, but keep the index -1
@@ -216,7 +296,7 @@ class Exp_Main_exo(Exp_Basic):
                         batch_y = torch.cat((batch_y, target), axis=-1)
                     else:
                         pass
-                    assert batch_y.shape[-1] == outputs.shape[-1], f"batch_y shape: {batch_y.shape}, outputs shape: {outputs.shape}, exo {self.args.exo}, exo_future {self.args.exo_future}, shapes do not match"
+                    assert batch_y.shape[-1] == outputs.shape[-2], f"batch_y shape: {batch_y.shape}, outputs shape: {outputs.shape}, exo {self.args.exo}, exo_future {self.args.exo_future}, shapes do not match"
                 
                 # loss
                 loss = criterion(outputs, batch_y)
@@ -322,7 +402,7 @@ class Exp_Main_exo(Exp_Basic):
 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 # print(outputs.shape,batch_y.shape)
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                outputs = outputs[:, -self.args.pred_len:, f_dim:, :]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
 
                 # remove index -2 if args.exo_future and args.exo are True, but keep the index -1
@@ -334,10 +414,10 @@ class Exp_Main_exo(Exp_Basic):
                         batch_y = torch.cat((batch_y, target), axis=-1)
                     else:
                         pass
-                    assert batch_y.shape[-1] == outputs.shape[-1], f"batch_y shape: {batch_y.shape}, outputs shape: {outputs.shape}, shapes do not match"
+                    assert batch_y.shape[-1] == outputs.shape[-2], f"batch_y shape: {batch_y.shape}, outputs shape: {outputs.shape}, shapes do not match"
 
-                mse_label = criterion[0](outputs[0, :, -1], batch_y[0, :, -1])
-                mae_label = criterion[1](outputs[0, :, -1], batch_y[0, :, -1])
+                # mse_label = criterion[0](outputs[0, :, -1], batch_y[0, :, -1])
+                # mae_label = criterion[1](outputs[0, :, -1], batch_y[0, :, -1])
 
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
@@ -352,20 +432,20 @@ class Exp_Main_exo(Exp_Basic):
                 preds.append(pred)
                 trues.append(true)
                 inputx.append(batch_x.detach().cpu().numpy())
-                if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
-                    # for s in range(input.shape[-1]): #signal number
-                    for s in range(true.shape[-1]): #signal number
-                        gt = np.concatenate((input[0, :, s], true[0, :, s]), axis=0)
-                        pd = np.concatenate((input[0, :, s], pred[0, :, s]), axis=0)
-                        path = os.path.join(folder_path, f'{s}_mse{mse_label.item():.5f}_mae{mae_label.item():.5f}_{i}_0.pdf') #{s}_MSE_MAE_{i}_0:  signal, MSE, MAE, batch number, batch element # to have the each signals in order of good to bad samples
-                        visual(gt, pd, path)
+                # if i % 20 == 0:
+                #     input = batch_x.detach().cpu().numpy()
+                #     # for s in range(input.shape[-1]): #signal number
+                #     for s in range(true.shape[-1]): #signal number
+                #         gt = np.concatenate((input[0, :, s], true[0, :, s]), axis=0)
+                #         pd = np.concatenate((input[0, :, s], pred[0, :, s]), axis=0)
+                #         path = os.path.join(folder_path, f'{s}_mse{mse_label.item():.5f}_mae{mae_label.item():.5f}_{i}_0.pdf') #{s}_MSE_MAE_{i}_0:  signal, MSE, MAE, batch number, batch element # to have the each signals in order of good to bad samples
+                #         visual(gt, pd, path)
 
         preds = np.array(preds)
         trues = np.array(trues)
         inputx = np.array(inputx)
 
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        preds = preds.reshape(-1, preds.shape[-3], preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         inputx = inputx.reshape(-1, inputx.shape[-2], inputx.shape[-1])
 
@@ -374,10 +454,11 @@ class Exp_Main_exo(Exp_Basic):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual = metric(preds, trues)
+        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point = metric(preds, trues, self.quantiles)
         print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse, mae, rmse, R2))
         print('Individual:\n')
         print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
+        print('SQL:{}, SQL_point:{}'.format(sql, sql_point))
 
         f = open("result.txt", 'a')
         f.write('Test End Time: {}\n'.format(time.strftime("%Y.%m.%d,%H:%M:%S", time.localtime())))
@@ -385,6 +466,7 @@ class Exp_Main_exo(Exp_Basic):
         f.write('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse, mae, rmse, R2))
         f.write('Individual:\n')
         f.write('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
+        f.write('SQL:{}, SQL_point:{}\n'.format(sql, sql_point))
         # f.write('DTW Error, test all, MAE threshold: {}, close samples: {} {}%, far samples:{} {}%, all:{}'.format(mse_threshold, cls_c, cls_2all, far_c, far_2all, all_c))
         # f.write('\n')
         # f.write('mse individual:{}'.format(mse_individual))
@@ -394,10 +476,10 @@ class Exp_Main_exo(Exp_Basic):
 
         # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe,rse, corr]))
         # np.save(folder_path + 'pred.npy', preds)
-        np.save(folder_path + 'mse_individual.npy', mse_individual)
-        np.save(folder_path + 'mae_individual.npy', mae_individual)
-        np.save(folder_path + 'rmse_individual.npy', rmse_individual)
-        np.save(folder_path + 'r2_individual.npy', r2_individual)
+        # np.save(folder_path + 'mse_individual.npy', mse_individual)
+        # np.save(folder_path + 'mae_individual.npy', mae_individual)
+        # np.save(folder_path + 'rmse_individual.npy', rmse_individual)
+        # np.save(folder_path + 'r2_individual.npy', r2_individual)
         # np.save(folder_path + 'true.npy', trues)
         # np.save(folder_path + 'x.npy', inputx)
         return
@@ -589,10 +671,11 @@ class Exp_Main_exo(Exp_Basic):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual = metric(preds, trues)
+        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point = metric(preds, trues, self.quantiles)
         print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse, mae, rmse, R2))
         print('Individual:\n')
         print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
+        print('sql:{}, sql_point:{}'.format(sql, sql_point))
         
         f = open("result.txt", 'a')
         f.write('Test End Time: {}\n'.format(time.strftime("%Y.%m.%d,%H:%M:%S", time.localtime())))
@@ -600,7 +683,8 @@ class Exp_Main_exo(Exp_Basic):
         f.write('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse, mae, rmse, R2))
         f.write('Individual:\n')
         f.write('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
-        f.write('DTW Error, test all, MAE threshold: {}, close samples: {} {}%, far samples:{} {}%, all:{}'.format(mse_threshold, cls_c, cls_2all, far_c, far_2all, all_c))
+        f.write('DTW Error, test all, MAE threshold: {}, close samples: {} {}%, far samples:{} {}%, all:{}\n'.format(mse_threshold, cls_c, cls_2all, far_c, far_2all, all_c))
+        f.write('sql:{}, sql_point:{}\n'.format(sql, sql_point))
         # f.write('\n')
         # f.write('mse individual:{}'.format(mse_individual))
         f.write('\n')
@@ -609,7 +693,7 @@ class Exp_Main_exo(Exp_Basic):
 
         # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe,rse, corr]))
         # np.save(folder_path + 'pred.npy', preds)
-        np.save(folder_path + 'mse_individual.npy', mse_individual)
+        # np.save(folder_path + 'mse_individual.npy', mse_individual)
         # np.save(folder_path + 'true.npy', trues)
         # np.save(folder_path + 'x.npy', inputx)
         return
