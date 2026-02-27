@@ -449,24 +449,36 @@ class Exp_Main_exo(Exp_Basic):
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         inputx = inputx.reshape(-1, inputx.shape[-2], inputx.shape[-1])
 
+        mean, var = test_data.scaler.mean_, test_data.scaler.scale_
+        preds_real = preds * var[-1] + mean[-1]
+        trues_real = trues * var[-1] + mean[-1]
+
         # result save
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
         mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point = metric(preds, trues, self.quantiles)
+        mae_real, mse_real, rmse_real, mape_real, mspe_real, rse_real, corr_real, R2_real, EVS_real, mse_individual_real, mae_individual_real, rmse_individual_real, r2_individual_real, sql_real, sql_point_real = metric(preds_real, trues_real, self.quantiles)
+
         print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse, mae, rmse, R2))
+        print('mse_real:{}, mae_real:{}, rmse_real:{}, R2_real:{}\n'.format(mse_real, mae_real, rmse_real, R2_real))
         print('Individual:\n')
         print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
+        print('mse_real:{}, mae_real:{}, rmse_real:{}, R2_real:{}\n'.format(mse_individual_real, mae_individual_real, rmse_individual_real, r2_individual_real))
         print('SQL:{}, SQL_point:{}'.format(sql, sql_point))
+        print('SQL_real:{}, SQL_point_real:{}'.format(sql_real, sql_point_real))
 
         f = open("result.txt", 'a')
         f.write('Test End Time: {}\n'.format(time.strftime("%Y.%m.%d,%H:%M:%S", time.localtime())))
         f.write(setting + "  \n")
         f.write('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse, mae, rmse, R2))
+        f.write('mse_real:{}, mae_real:{}, rmse_real:{}, R2_real:{}\n'.format(mse_real, mae_real, rmse_real, R2_real))
         f.write('Individual:\n')
         f.write('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
+        f.write('mse_real:{}, mae_real:{}, rmse_real:{}, R2_real:{}\n'.format(mse_individual_real, mae_individual_real, rmse_individual_real, r2_individual_real))
         f.write('SQL:{}, SQL_point:{}\n'.format(sql, sql_point))
+        f.write('SQL_real:{}, SQL_point_real:{}\n'.format(sql_real, sql_point_real))
         # f.write('DTW Error, test all, MAE threshold: {}, close samples: {} {}%, far samples:{} {}%, all:{}'.format(mse_threshold, cls_c, cls_2all, far_c, far_2all, all_c))
         # f.write('\n')
         # f.write('mse individual:{}'.format(mse_individual))
