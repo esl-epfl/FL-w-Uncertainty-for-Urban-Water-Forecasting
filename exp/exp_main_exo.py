@@ -102,7 +102,7 @@ class Exp_Main_exo(Exp_Basic):
           outputs: [B, T, V, Q]
           batch_y: [B, T, V]
         """
-        self.quantiles = getattr(self.args, "quantiles", [0.1, 0.5, 0.9])  # or wherever configs live
+        self.quantiles = getattr(self.args, "quantiles", [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95])  # or wherever configs live
         qloss = QuantileLoss(quantiles=self.quantiles)
 
         def criterion(outputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -458,11 +458,11 @@ class Exp_Main_exo(Exp_Basic):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point = metric(preds, trues, self.quantiles)
-        mae_real, mse_real, rmse_real, mape_real, mspe_real, rse_real, corr_real, R2_real, EVS_real, mse_individual_real, mae_individual_real, rmse_individual_real, r2_individual_real, sql_real, sql_point_real = metric(preds_real, trues_real, self.quantiles)
+        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, nse, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point = metric(preds, trues, self.quantiles)
+        mae_real, mse_real, rmse_real, mape_real, mspe_real, rse_real, corr_real, R2_real, EVS_real, nse_real, mse_individual_real, mae_individual_real, rmse_individual_real, r2_individual_real, sql_real, sql_point_real = metric(preds_real, trues_real, self.quantiles)
 
-        print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse, mae, rmse, R2))
-        print('mse_real:{}, mae_real:{}, rmse_real:{}, R2_real:{}\n'.format(mse_real, mae_real, rmse_real, R2_real))
+        print('mse:{}, mae:{}, rmse:{}, R2:{}, nse:{}\n'.format(mse, mae, rmse, R2, nse))
+        print('mse_real:{}, mae_real:{}, rmse_real:{}, R2_real:{}, nse_real:{}\n'.format(mse_real, mae_real, rmse_real, R2_real, nse_real))
         print('Individual:\n')
         print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
         print('mse_real:{}, mae_real:{}, rmse_real:{}, R2_real:{}\n'.format(mse_individual_real, mae_individual_real, rmse_individual_real, r2_individual_real))
@@ -683,8 +683,8 @@ class Exp_Main_exo(Exp_Basic):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point = metric(preds, trues, self.quantiles)
-        print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse, mae, rmse, R2))
+        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, nse, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point = metric(preds, trues, self.quantiles)
+        print('mse:{}, mae:{}, rmse:{}, R2:{}, nse:{}\n'.format(mse, mae, rmse, R2, nse))
         print('Individual:\n')
         print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
         print('sql:{}, sql_point:{}'.format(sql, sql_point))

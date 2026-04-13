@@ -27,7 +27,7 @@ class Model(nn.Module):
 
         # Choose your quantiles (example default)
         # For Chronos-2-like setup you can pass a 21-quantile grid in configs.quantiles.
-        self.quantiles = getattr(configs, "quantiles", [0.1, 0.5, 0.9])
+        self.quantiles = getattr(configs, "quantiles", [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95])
 
         # CNN embeddings for main input
         self.embedding1 = nn.Conv1d(in_channels=nvars, out_channels=d_model // 4,

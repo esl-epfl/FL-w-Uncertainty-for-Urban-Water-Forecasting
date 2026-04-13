@@ -116,4 +116,6 @@ def metric(pred, true, quantiles=None):
     rmse_individual = RMSE_individual(pred, true)
     r2_individual = R2_individual(pred, true)
 
-    return mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point
+    nse = r2_individual.mean()  # Nash-Sutcliffe Efficiency, average of individual R2 scores across variables, r2_individual = nse_individual
+
+    return mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, nse, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point

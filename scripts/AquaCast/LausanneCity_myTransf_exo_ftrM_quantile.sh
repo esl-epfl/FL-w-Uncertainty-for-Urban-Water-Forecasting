@@ -18,7 +18,7 @@ do
 
     root_path_name=/home/abgo/Data/LausanneCity/
     data_path_name=LausanneCity_v"$data_version".csv
-    model_id_name=LausanneCity_v"$data_version"
+    model_id_name=LausanneCity_v"$data_version"_quantile
     data_name=custom_exo
 
     features=M
@@ -32,7 +32,7 @@ do
     n_heads=2
     d_model=32
     d_ff=128
-    for seq_len in 96 500 #96 is default of AquaCast, 500 to compare with Chronos2
+    for seq_len in 96 #96 is default of AquaCast, 500 to compare with Chronos2
     do
         python -u run_longExp.py \
         --random_seed $random_seed \
