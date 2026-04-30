@@ -101,44 +101,151 @@ def visual(true, preds=None, name='./pic/test.pdf'):
     plt.savefig(name, bbox_inches='tight')
     plt.close()
 
-def visual_rain(true, preds, rain, error_name=None, error=None, name='./pic/test.pdf', rain_name='Rain'):
+# def visual_rain(true, preds, rain, error_name=None, error=None, name='./pic/test.pdf', rain_name='Rain'):
+#     """
+#     Results visualization with consistent font sizes and in-frame legend.
+#     """
+#     if error is None or error_name is None:
+#         pred_err = "Prediction"
+#     else:
+#         pred_err = f"Prediction {error_name}:{error:.4f}"
+
+#     fig, ax1 = plt.subplots(figsize=[15, 6])
+
+#     # Plot water height predictions
+#     ax1.plot(preds, label=pred_err, color='green', linestyle='--')
+#     ax1.plot(true, label='Ground Truth', color='orange')
+#     ax1.set_xlabel('Time Step', fontsize=18)
+#     ax1.set_ylabel('Water Height', fontsize=18)
+#     ax1.tick_params(axis='both', labelsize=18)  # Apply fontsize to both x and y axes
+
+#     handles, labels = ax1.get_legend_handles_labels()
+
+#     # Plot rain if provided
+#     if rain is not None:
+#         ax2 = ax1.twinx()
+#         ax2.set_ylabel('Precipitation', color='tab:blue', fontsize=18)
+#         ax2.fill_between(np.arange(len(rain)), rain, alpha=0.3, label=rain_name, color='tab:blue')
+#         ax2.tick_params(axis='y', labelcolor='tab:blue', labelsize=18)
+
+#         # Add a patch for rain to combined legend
+#         rain_patch = plt.Line2D([0], [0], color='tab:blue', alpha=0.3, lw=10, label=rain_name)
+#         handles.append(rain_patch)
+#         labels.append(rain_name)
+
+#     # Add legend inside the plot frame
+#     ax1.legend(handles, labels, fontsize=18, loc='best', frameon=True)
+
+#     plt.tight_layout()
+#     plt.savefig(name, bbox_inches='tight')
+#     plt.close()
+
+def visual_rain(true, preds, rain, error_name=None, error=None, name='./pic/test.pdf', rain_name='Rain', quantiles=None):
     """
     Results visualization with consistent font sizes and in-frame legend.
+    Supports both point predictions and quantile forecast outputs.
+    
+    Args:
+        true:        Ground truth time series.
+        preds:       Point predictions (1D) or quantile predictions (2D array of shape 
+                     [timesteps, n_quantiles]).
+        rain:        Precipitation data (or None).
+        error_name:  Name of the error metric (optional).
+        error:       Error value (optional).
+        name:        Output file path.
+        rain_name:   Label for the precipitation series.
+        quantiles:   List of quantile levels corresponding to columns in preds,
+                     e.g. [0.1, 0.5, 0.9]. If None, preds is treated as a point forecast.
+                     The median quantile (0.5) is used as the main prediction line.
+                     Symmetric pairs (e.g. 0.1 & 0.9) are shaded as confidence intervals.
     """
-    if error is None or error_name is None:
-        pred_err = "Prediction"
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import matplotlib.lines as mlines
+    import matplotlib.patches as mpatches
+
+    is_quantile = quantiles is not None and np.array(preds).ndim == 2
+
+    # ── Determine the label for the main prediction line ──────────────────────
+    if is_quantile:
+        pred_label = "Median Forecast (q=0.50)"
+    elif error is None or error_name is None:
+        pred_label = "Prediction"
     else:
-        pred_err = f"Prediction {error_name}:{error:.4f}"
+        pred_label = f"Prediction {error_name}:{error:.4f}"
 
     fig, ax1 = plt.subplots(figsize=[15, 6])
 
-    # Plot water height predictions
-    ax1.plot(preds, label=pred_err, color='green', linestyle='--')
+    # ── Quantile branch ───────────────────────────────────────────────────────
+    if is_quantile:
+        preds = np.array(preds)           # shape: [T, n_quantiles]
+        quantiles = list(quantiles)
+        T = preds.shape[0]
+        x = np.arange(T)
+
+        # Sort quantiles so we can pair symmetric intervals
+        sorted_idx = np.argsort(quantiles)
+        sorted_q   = [quantiles[i] for i in sorted_idx]
+        sorted_p   = preds[:, sorted_idx]
+
+        # ── Shade symmetric quantile bands ────────────────────────────────────
+        # Walk inward from the outermost pair toward 0.5
+        lo_indices = [i for i, q in enumerate(sorted_q) if q < 0.5]
+        hi_indices = [i for i, q in enumerate(sorted_q) if q > 0.5]
+
+        # Pair them: outermost first → lightest shading
+        pairs = list(zip(lo_indices, reversed(hi_indices)))
+        n_pairs = len(pairs)
+        for k, (li, hi) in enumerate(pairs):
+            alpha = 0.15 + 0.20 * (k / max(n_pairs - 1, 1))   # 0.15 → 0.35
+            q_lo, q_hi = sorted_q[li], sorted_q[hi]
+            ax1.fill_between(
+                x,
+                sorted_p[:, li],
+                sorted_p[:, hi],
+                alpha=alpha,
+                color='green',
+                label=f"CI [{q_lo:.2f}–{q_hi:.2f}]"
+            )
+
+        # ── Main line: median if available, otherwise middle column ───────────
+        if 0.5 in sorted_q:
+            median_col = sorted_q.index(0.5)
+        else:
+            median_col = len(sorted_q) // 2
+        ax1.plot(x, sorted_p[:, median_col], label=pred_label,
+                 color='green', linestyle='--', linewidth=1.8)
+
+    # ── Point-forecast branch ─────────────────────────────────────────────────
+    else:
+        ax1.plot(preds, label=pred_label, color='green', linestyle='--')
+
+    # ── Ground truth ──────────────────────────────────────────────────────────
     ax1.plot(true, label='Ground Truth', color='orange')
     ax1.set_xlabel('Time Step', fontsize=18)
     ax1.set_ylabel('Water Height', fontsize=18)
-    ax1.tick_params(axis='both', labelsize=18)  # Apply fontsize to both x and y axes
+    ax1.tick_params(axis='both', labelsize=18)
 
     handles, labels = ax1.get_legend_handles_labels()
 
-    # Plot rain if provided
+    # ── Optional precipitation overlay ───────────────────────────────────────
     if rain is not None:
         ax2 = ax1.twinx()
         ax2.set_ylabel('Precipitation', color='tab:blue', fontsize=18)
-        ax2.fill_between(np.arange(len(rain)), rain, alpha=0.3, label=rain_name, color='tab:blue')
+        ax2.fill_between(np.arange(len(rain)), rain,
+                         alpha=0.3, label=rain_name, color='tab:blue')
         ax2.tick_params(axis='y', labelcolor='tab:blue', labelsize=18)
 
-        # Add a patch for rain to combined legend
-        rain_patch = plt.Line2D([0], [0], color='tab:blue', alpha=0.3, lw=10, label=rain_name)
+        rain_patch = mlines.Line2D([0], [0], color='tab:blue',
+                                   alpha=0.3, lw=10, label=rain_name)
         handles.append(rain_patch)
         labels.append(rain_name)
 
-    # Add legend inside the plot frame
     ax1.legend(handles, labels, fontsize=18, loc='best', frameon=True)
-
     plt.tight_layout()
     plt.savefig(name, bbox_inches='tight')
     plt.close()
+    print(f"Plot saved to {name}")
 
 
 def visual_plot(train, valid, test, name='./pic/test.pdf'):
@@ -183,3 +290,49 @@ def test_params_flop(model,x_shape):
         # print('Params:' + params)
         print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
         print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+
+
+# ── Reproducibility : Visual Rain Quantiles ───────────────────────────────────────────────────────────
+np.random.seed(42)
+T = 96
+
+# ── Ground truth: smooth sinusoidal water-height signal ───────────────────────
+t = np.linspace(0, 4 * np.pi, T)
+true = 2.5 * np.sin(t) + 0.5 * np.sin(3 * t) + 5.0
+
+# ── Quantile forecasts ────────────────────────────────────────────────────────
+# Median tracks the truth with a small lag + bias
+median = 2.4 * np.sin(t - 0.15) + 0.48 * np.sin(3 * t - 0.1) + 5.05
+median += np.random.normal(0, 0.08, T)          # tiny noise on median
+
+# Spread grows slightly in the second half (heteroscedastic uncertainty)
+spread = np.linspace(0.2, 0.6, T)
+
+quantile_preds = np.column_stack([
+    median - 2.0 * spread,   # q05
+    median - 1.2 * spread,   # q25
+    median,                  # q50
+    median + 1.2 * spread,   # q75
+    median + 2.0 * spread,   # q95
+])
+
+# ── Precipitation: sporadic rain events ───────────────────────────────────────
+rain = np.zeros(T)
+rain[10:18]  = np.random.uniform(2, 5,  8)
+rain[35:42]  = np.random.uniform(4, 9,  7)
+rain[60:70]  = np.random.uniform(1, 6, 10)
+rain[82:90]  = np.random.uniform(3, 7,  8)
+
+# ── Run visualization ─────────────────────────────────────────────────────────
+visual_rain(
+    true           = true,
+    preds          = quantile_preds,
+    rain           = rain,
+    error_name     = 'CRPS',
+    error          = 0.0318,
+    name           = './test_quantile_96.pdf',
+    rain_name      = 'Precipitation (mm)',
+    quantiles      = [0.05, 0.25, 0.5, 0.75, 0.95],
+)
+
+print("Plot saved to ./test_quantile_96.pdf")

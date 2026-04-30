@@ -506,7 +506,7 @@ class Exp_Main_exo(Exp_Basic):
         except AttributeError:
             mean_exo, var_exo = None, None
         min_, max_ = test_data.normal.data_min_, test_data.normal.data_max_
-        inverse_transform = True
+        inverse_transform = False
         print(self.args.exo_future, self.args.exo)
         # print('dataset scaler', test_data.scaler.mean_, test_data.scaler.var_)
         #--- Add Sin Signal ----
@@ -609,14 +609,14 @@ class Exp_Main_exo(Exp_Basic):
                         batch_y = np.concatenate((batch_y, target), axis=-1)
                     else:
                         pass
-                    assert batch_y.shape[-1] == outputs.shape[-1], f"batch_y shape: {batch_y.shape}, outputs shape: {outputs.shape}, shapes do not match"
+                    assert batch_y.shape[-1] == outputs.shape[-2], f"batch_y shape: {batch_y.shape}, outputs shape: {outputs.shape}, shapes do not match"
 
                 
                 # Metrics
                 # DTW-based hit rate
-                DTW_error_per_signal = self.compute_dtw(outputs, batch_y)
+                # DTW_error_per_signal = self.compute_dtw(outputs, batch_y)
             
-                nice_signals = DTW_error_per_signal < mse_threshold
+                # nice_signals = DTW_error_per_signal < mse_threshold
                 
                 pred = outputs  # outputs.detach().cpu().numpy()  # .squeeze()
                 true = batch_y  # batch_y.detach().cpu().numpy()  # .squeeze()
@@ -625,17 +625,25 @@ class Exp_Main_exo(Exp_Basic):
                 trues.append(true)
                 inputx.append(batch_x.detach().cpu().numpy())
                 
-                b = nice_signals.shape[0]
-                s = nice_signals.shape[1]
-                cls_c += nice_signals.sum(axis=0)
-                far_c += b - nice_signals.sum(axis=0)
+                # b = nice_signals.shape[0]
+                # s = nice_signals.shape[1]
+                # cls_c += nice_signals.sum(axis=0)
+                # far_c += b - nice_signals.sum(axis=0)
 
                 for b in [0]: #batch elements e.g. [0, 15, 48, 128] or range(inpt.shape[0])
                     for s in range(1): #signal number. or range(inpt.shape[-1]). for MS it should be only the target signal with index 0
+                        # repeat inpt if quantile output: inpt [b, sl, nf] -> [b, sl, nf, q] to match the shape of pred and true for visualizing the input together with the quantile predictions and true values
+                        if self.quantiles is not None:
+                            past = np.repeat(inpt[:, :, -1:], repeats=len(self.quantiles), axis=-1)
+                        else:
+                            past = inpt[:, :, -1:]
+                        
+                        print(f'inpt shape: {inpt.shape}, pred shape: {pred.shape}, true shape: {true.shape}, past shape: {past.shape}')
                         gt = np.concatenate((inpt[b, :, -1], true[b, :, -1]), axis=0)
-                        pd = np.concatenate((inpt[b, :, -1], pred[b, :, -1]), axis=0)
-                        mse = np.mean((pred[b, :, -1] - true[b, :, -1])**2) # only for the forecasted part
-                        print('mse: ', mse)
+                        pd = np.concatenate((past[b, ...], pred[b, :, -1]), axis=0)
+                        # mse = np.mean((pred[b, ..., -1] - true[b, ..., -1])**2) # only for the forecasted part
+                        # print('mse: ', mse)
+                        print(f'gt shape: {gt.shape}, pd shape: {pd.shape}')
 
                         if not(self.args.exo_future or self.args.exo):
                             rn = None
@@ -643,6 +651,8 @@ class Exp_Main_exo(Exp_Basic):
                             rn = np.concatenate((rain[b, :], rain_y[b, :]), axis=0)
                         else:
                             rn = rain[b, :]
+                        print(f'rn shape: {rn.shape}' if rn is not None else 'rn is None')
+                        print(f'rain shape: {rain[b, :].shape}, rain_y shape: {rain_y[b, :].shape}')
                         
                         if inverse_transform:
                             # reverse the standardization transform
@@ -655,18 +665,19 @@ class Exp_Main_exo(Exp_Basic):
                                 else:
                                      rn = rn * var[rain_index] + mean[rain_index]
 
-                        path = os.path.join(folder_path, f'plot_{s}_{DTW_error_per_signal[b,s].item():.5f}_{i}_{b}.pdf') # {i}_{b}_{s}: batch number, batch element, signal
+                        path = os.path.join(folder_path, f'plot_quantile_{s}_{i}_{b}.pdf') # {i}_{b}_{s}: batch number, batch element, signal
                         # visual(gt, pd, path) 
-                        arr = np.array([gt, pd, rn], dtype=object)
-                        np.save(path.replace('.pdf', '.npy'), arr)
-                        visual_rain(gt, pd, rn, 'MSE', mse, path) 
+                        # arr = np.array([gt, pd, rn], dtype=object)
+                        # np.save(path.replace('.pdf', '.npy'), arr)
+                        print(path)
+                        visual_rain(gt, pd, rn, 'MSE', None, path, quantiles=self.quantiles) 
 
-        all_c = cls_c + far_c
-        print(all_c)
-        print(cls_c)
-        print(far_c)
-        cls_2all =  [a/b for a, b in zip(cls_c, all_c)]
-        far_2all =  [a/b for a, b in zip(far_c, all_c)]
+        # all_c = cls_c + far_c
+        # print(all_c)
+        # print(cls_c)
+        # print(far_c)
+        # cls_2all =  [a/b for a, b in zip(cls_c, all_c)]
+        # far_2all =  [a/b for a, b in zip(far_c, all_c)]
         if self.args.test_flop:
             test_params_flop((batch_x.shape[1],batch_x.shape[2]))
             exit()
