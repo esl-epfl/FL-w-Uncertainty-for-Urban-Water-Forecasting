@@ -317,6 +317,7 @@ class Dataset_Custom_exo(Dataset):
 
         self.root_path = root_path
         self.data_path = data_path
+        self.rain_len = 36 if 0 else self.pred_len # 0 should be replaced with a condition to show if it's real rain forecast or if perfect forecast then rain len is pred_len
         self.__read_data__()
 
     def __read_data__(self):
@@ -383,15 +384,15 @@ class Dataset_Custom_exo(Dataset):
         # Exogenous future: last column of data_x, future window after s_end
         exo_future = self.data_x[s_end:s_end + self.pred_len, -2]  # shape: [pred_len], index -2 if the exogenous (rain) is the last column in raw file
         
-        if len(exo_future) >= 36:
-            exo_future = exo_future[:36]
+        if len(exo_future) >= self.rain_len:
+            exo_future = exo_future[:self.rain_len]
         elif len(exo_future) == 0:
-            exo_future = np.zeros(36, dtype=np.float32)
+            exo_future = np.zeros(self.rain_len, dtype=np.float32)
         else:
-            pad = np.full(36 - len(exo_future), exo_future[-1], dtype=np.float32)
+            pad = np.full(self.rain_len - len(exo_future), exo_future[-1], dtype=np.float32)
             exo_future = np.concatenate([exo_future, pad], axis=0)
 
-        exo_future = exo_future.reshape(36, 1)          # shape: [pred_len, 1]
+        exo_future = exo_future.reshape(self.rain_len, 1)          # shape: [pred_len, 1]
 
         return [seq_x, exo_future], seq_y, seq_x_mark, seq_y_mark
 

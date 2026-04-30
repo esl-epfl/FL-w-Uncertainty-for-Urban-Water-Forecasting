@@ -21,6 +21,7 @@ class Model(nn.Module):
         dropout = configs.dropout
         kernel_size = configs.kernel_size
         stride = configs.stride
+        self.rain_len = 36 if 0 else configs.pred_len # 0 should be replaced with a condition to show if it's real rain forecast or if perfect forecast then rain len is pred_len
 
         self.use_exo_future = configs.exo_future
         self.n_pred_var = configs.enc_in - (configs.exo)
@@ -42,7 +43,7 @@ class Model(nn.Module):
 
         # Optional embedding for exogenous future time series
         if self.use_exo_future:
-            self.exo_embedder = nn.Linear(36, d_model)  # [B, Exo_len, 1] -> [B, 1, d_model]
+            self.exo_embedder = nn.Linear(self.rain_len, d_model)  # [B, Exo_len, 1] -> [B, 1, d_model]
 
 
         # Transformer Encoder
