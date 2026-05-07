@@ -506,7 +506,7 @@ class Exp_Main_exo(Exp_Basic):
         except AttributeError:
             mean_exo, var_exo = None, None
         min_, max_ = test_data.normal.data_min_, test_data.normal.data_max_
-        inverse_transform = False
+        inverse_transform = True
         print(self.args.exo_future, self.args.exo)
         # print('dataset scaler', test_data.scaler.mean_, test_data.scaler.var_)
         #--- Add Sin Signal ----
@@ -656,8 +656,8 @@ class Exp_Main_exo(Exp_Basic):
                         
                         if inverse_transform:
                             # reverse the standardization transform
-                            gt = gt * var[-1] + mean[-1]
-                            pd = pd * var[-1] + mean[-1]
+                            # gt = gt * var[-1] + mean[-1]
+                            # pd = pd * var[-1] + mean[-1]
                             if rn is not None:
                                 if mean_exo is not None and var_exo is not None:
                                     rn[:len(rain[b, :])] = rn[:len(rain[b, :])] * var[rain_index] + mean[rain_index]
@@ -685,7 +685,7 @@ class Exp_Main_exo(Exp_Basic):
         trues = np.array(trues)
         inputx = np.array(inputx)
 
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        preds = preds = preds.reshape(-1, preds.shape[-3], preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         inputx = inputx.reshape(-1, inputx.shape[-2], inputx.shape[-1])
 
@@ -706,7 +706,7 @@ class Exp_Main_exo(Exp_Basic):
         f.write('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse, mae, rmse, R2))
         f.write('Individual:\n')
         f.write('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
-        f.write('DTW Error, test all, MAE threshold: {}, close samples: {} {}%, far samples:{} {}%, all:{}\n'.format(mse_threshold, cls_c, cls_2all, far_c, far_2all, all_c))
+        # f.write('DTW Error, test all, MAE threshold: {}, close samples: {} {}%, far samples:{} {}%, all:{}\n'.format(mse_threshold, cls_c, cls_2all, far_c, far_2all, all_c))
         f.write('sql:{}, sql_point:{}\n'.format(sql, sql_point))
         # f.write('\n')
         # f.write('mse individual:{}'.format(mse_individual))

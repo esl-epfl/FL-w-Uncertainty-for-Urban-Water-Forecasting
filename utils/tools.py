@@ -140,33 +140,31 @@ def visual(true, preds=None, name='./pic/test.pdf'):
 #     plt.savefig(name, bbox_inches='tight')
 #     plt.close()
 
-def visual_rain(true, preds, rain, error_name=None, error=None, name='./pic/test.pdf', rain_name='Rain', quantiles=None):
+def visual_rain(true, preds, rain, error_name=None, error=None,
+                name='./pic/test.pdf', rain_name='Rain', quantiles=None):
     """
     Results visualization with consistent font sizes and in-frame legend.
     Supports both point predictions and quantile forecast outputs.
-    
-    Args:
-        true:        Ground truth time series.
-        preds:       Point predictions (1D) or quantile predictions (2D array of shape 
-                     [timesteps, n_quantiles]).
-        rain:        Precipitation data (or None).
-        error_name:  Name of the error metric (optional).
-        error:       Error value (optional).
-        name:        Output file path.
-        rain_name:   Label for the precipitation series.
-        quantiles:   List of quantile levels corresponding to columns in preds,
-                     e.g. [0.1, 0.5, 0.9]. If None, preds is treated as a point forecast.
-                     The median quantile (0.5) is used as the main prediction line.
-                     Symmetric pairs (e.g. 0.1 & 0.9) are shaded as confidence intervals.
+
+    Adds:
+    - Vertical "Now" line at timestep 96 (history length boundary)
+    - Larger font sizes for ax1 and ax2
     """
+
     import matplotlib.pyplot as plt
     import numpy as np
     import matplotlib.lines as mlines
-    import matplotlib.patches as mpatches
 
     is_quantile = quantiles is not None and np.array(preds).ndim == 2
 
-    # ── Determine the label for the main prediction line ──────────────────────
+    # ---- Config ----
+    history_len = 96          # vertical split point
+    main_font = 22            # axis label font size
+    tick_font = 20            # tick font size
+    legend_font = 18          # legend font size
+    now_line_width = 2.0
+
+    # ---- Determine prediction label ----
     if is_quantile:
         pred_label = "Median Forecast (q=0.50)"
     elif error is None or error_name is None:
@@ -176,29 +174,30 @@ def visual_rain(true, preds, rain, error_name=None, error=None, name='./pic/test
 
     fig, ax1 = plt.subplots(figsize=[15, 6])
 
-    # ── Quantile branch ───────────────────────────────────────────────────────
+    # x-axis for plotting
     if is_quantile:
-        preds = np.array(preds)           # shape: [T, n_quantiles]
+        preds = np.array(preds)   # [T, n_quantiles]
         quantiles = list(quantiles)
         T = preds.shape[0]
         x = np.arange(T)
 
-        # Sort quantiles so we can pair symmetric intervals
+        # ---- Sort quantiles ----
         sorted_idx = np.argsort(quantiles)
-        sorted_q   = [quantiles[i] for i in sorted_idx]
-        sorted_p   = preds[:, sorted_idx]
+        sorted_q = [quantiles[i] for i in sorted_idx]
+        sorted_p = preds[:, sorted_idx]
 
-        # ── Shade symmetric quantile bands ────────────────────────────────────
-        # Walk inward from the outermost pair toward 0.5
+        # ---- Confidence interval shading ----
         lo_indices = [i for i, q in enumerate(sorted_q) if q < 0.5]
         hi_indices = [i for i, q in enumerate(sorted_q) if q > 0.5]
 
-        # Pair them: outermost first → lightest shading
         pairs = list(zip(lo_indices, reversed(hi_indices)))
         n_pairs = len(pairs)
+
         for k, (li, hi) in enumerate(pairs):
-            alpha = 0.15 + 0.20 * (k / max(n_pairs - 1, 1))   # 0.15 → 0.35
+            alpha = 0.15 + 0.20 * (k / max(n_pairs - 1, 1))
+
             q_lo, q_hi = sorted_q[li], sorted_q[hi]
+
             ax1.fill_between(
                 x,
                 sorted_p[:, li],
@@ -208,43 +207,115 @@ def visual_rain(true, preds, rain, error_name=None, error=None, name='./pic/test
                 label=f"CI [{q_lo:.2f}–{q_hi:.2f}]"
             )
 
-        # ── Main line: median if available, otherwise middle column ───────────
+        # ---- Median line ----
         if 0.5 in sorted_q:
             median_col = sorted_q.index(0.5)
         else:
             median_col = len(sorted_q) // 2
-        ax1.plot(x, sorted_p[:, median_col], label=pred_label,
-                 color='green', linestyle='--', linewidth=1.8)
 
-    # ── Point-forecast branch ─────────────────────────────────────────────────
+        ax1.plot(
+            x,
+            sorted_p[:, median_col],
+            label=pred_label,
+            color='green',
+            linestyle='--',
+            linewidth=2
+        )
+
     else:
-        ax1.plot(preds, label=pred_label, color='green', linestyle='--')
+        x = np.arange(len(preds))
 
-    # ── Ground truth ──────────────────────────────────────────────────────────
-    ax1.plot(true, label='Ground Truth', color='orange')
-    ax1.set_xlabel('Time Step', fontsize=18)
-    ax1.set_ylabel('Water Height', fontsize=18)
-    ax1.tick_params(axis='both', labelsize=18)
+        ax1.plot(
+            x,
+            preds,
+            label=pred_label,
+            color='green',
+            linestyle='--',
+            linewidth=2
+        )
+
+    # ---- Ground truth ----
+    ax1.plot(
+        np.arange(len(true)),
+        true,
+        label='Ground Truth',
+        color='crimson',
+        linewidth=2
+    )
+
+    # ---- Vertical "Now" line ----
+    ax1.axvline(
+        x=history_len,
+        color='black',
+        linestyle=':',
+        linewidth=now_line_width,
+        label='Now'
+    )
+
+    ax1.text(
+        history_len + 1,
+        ax1.get_ylim()[1] * 0.95,
+        "Now",
+        fontsize=18,
+        color='black',
+        verticalalignment='top'
+    )
+
+    # ---- Axis styling ----
+    ax1.set_xlabel('Time Step', fontsize=main_font)
+    ax1.set_ylabel('Water Height', fontsize=main_font)
+    ax1.tick_params(axis='both', labelsize=tick_font)
 
     handles, labels = ax1.get_legend_handles_labels()
 
-    # ── Optional precipitation overlay ───────────────────────────────────────
+    # ---- Rain overlay ----
     if rain is not None:
         ax2 = ax1.twinx()
-        ax2.set_ylabel('Precipitation', color='tab:blue', fontsize=18)
-        ax2.fill_between(np.arange(len(rain)), rain,
-                         alpha=0.3, label=rain_name, color='tab:blue')
-        ax2.tick_params(axis='y', labelcolor='tab:blue', labelsize=18)
 
-        rain_patch = mlines.Line2D([0], [0], color='tab:blue',
-                                   alpha=0.3, lw=10, label=rain_name)
+        ax2.set_ylabel(
+            'Precipitation',
+            color='tab:blue',
+            fontsize=main_font
+        )
+
+        ax2.fill_between(
+            np.arange(len(rain)),
+            rain,
+            alpha=0.3,
+            label=rain_name,
+            color='tab:blue'
+        )
+
+        ax2.tick_params(
+            axis='y',
+            labelcolor='tab:blue',
+            labelsize=tick_font
+        )
+
+        rain_patch = mlines.Line2D(
+            [0], [0],
+            color='tab:blue',
+            alpha=0.3,
+            lw=10,
+            label=rain_name
+        )
+
         handles.append(rain_patch)
         labels.append(rain_name)
 
-    ax1.legend(handles, labels, fontsize=18, loc='best', frameon=True)
+    # ---- Legend ----
+    ax1.legend(
+        handles,
+        labels,
+        fontsize=legend_font,
+        loc='best',
+        frameon=True
+    )
+
     plt.tight_layout()
     plt.savefig(name, bbox_inches='tight')
     plt.close()
+
     print(f"Plot saved to {name}")
 
 
