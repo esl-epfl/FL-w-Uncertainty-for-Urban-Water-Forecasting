@@ -694,11 +694,31 @@ class Exp_Main_exo(Exp_Basic):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, nse, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point = metric(preds, trues, self.quantiles)
+        mae, mse, rmse, mape, mspe, rse, corr, R2, EVS, nse, mse_individual, mae_individual, rmse_individual, r2_individual, sql, sql_point, uncertainty = metric(preds, trues, self.quantiles)
         print('mse:{}, mae:{}, rmse:{}, R2:{}, nse:{}\n'.format(mse, mae, rmse, R2, nse))
         print('Individual:\n')
         print('mse:{}, mae:{}, rmse:{}, R2:{}\n'.format(mse_individual, mae_individual, rmse_individual, r2_individual))
         print('sql:{}, sql_point:{}'.format(sql, sql_point))
+        print("CRPS:", uncertainty["crps"]["crps"])
+
+        print(
+            "Quantile calibration error:",
+            uncertainty["calibration"]["mean_absolute_calibration_error"],
+        )
+
+        print(
+            "Quantile ECE:",
+            uncertainty["calibration"]["quantile_ece"],
+        )
+
+        for level, values in uncertainty["intervals"].items():
+            if values["available"]:
+                print(
+                    level,
+                    "coverage =", values["empirical_coverage"],
+                    "width =", values["mean_interval_width"],
+                    "coverage error =", values["absolute_coverage_error"],
+                )
         
         f = open("result.txt", 'a')
         f.write('Test End Time: {}\n'.format(time.strftime("%Y.%m.%d,%H:%M:%S", time.localtime())))
