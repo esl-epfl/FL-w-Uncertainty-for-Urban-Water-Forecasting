@@ -1,0 +1,7 @@
+{
+  "extends": "../base.json",
+  "num_clients": 100,
+  "min_fit_clients": 100,
+  "aquacast_data_path": "synthesized_v2_2_1_1000.csv",
+  "enc_in": 11
+}

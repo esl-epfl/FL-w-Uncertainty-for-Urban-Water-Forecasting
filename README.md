@@ -1,15 +1,4 @@
-# My New Repo
-
-Synth & real *Data versions* and names tables
-
-Build the docker image:
-docker build -t synth:latest .
-
-# AquaCast — Transformer-based Time-Series Forecasting (Research Code)
-
-**What:** DL models (MyTransformer, PatchTST variants) for multi-variate, multi-horizon forecasting.  
-**Paper / Preprint:** (add link)  
-**Status:** Research code; reproducible on a tiny synthetic/sample dataset. Real/partner data is **not** included.
+# Federated Learning with Uncertainty for Urban Water Dynamics
 
 ## Install
 ```bash
@@ -39,6 +28,17 @@ Dataset structure for time-series forecasting in CSV columns' format
         date, node1, node2, ..., rain, rain_forecast_steps
 
 
+
+## Federated learning
+
+The paper's sensor-disjoint FedAvg experiments are in [`federated_learning/`](federated_learning/README.md), reusing the repository's AquaCast model, data loaders, and metrics. They include client scaling (1, 10, 50, 100 clients) and heterogeneous Zipf-1 sensor ownership.
+
+```bash
+pip install -r federated_learning/requirements.txt
+python -m federated_learning.run --sweep all --data-root new_data/
+```
+
+See the [FL instructions](federated_learning/README.md) for the four required external CSVs, individual runs, and paper figures.
 
 ## Acknowledgement
 

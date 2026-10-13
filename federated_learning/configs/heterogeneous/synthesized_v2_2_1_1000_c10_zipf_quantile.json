@@ -1,0 +1,19 @@
+{
+  "extends": "../base.json",
+  "num_clients": 10,
+  "min_fit_clients": 10,
+  "aquacast_data_path": "synthesized_v2_2_1_1000.csv",
+  "enc_in": 341,
+  "aquacast_partition_sizes": [
+    340,
+    170,
+    110,
+    90,
+    70,
+    60,
+    50,
+    40,
+    40,
+    30
+  ]
+}
